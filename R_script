@@ -1,0 +1,139 @@
+# Install and load necessary libraries
+install.packages("ggcorrplot")
+library(ggcorrplot)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(rpart)
+library(nnet)
+library(Metrics)
+library(caret)
+library(scales)
+
+# Load the dataset
+url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/00235/household_power_consumption.zip"
+temp_zip <- tempfile(fileext = ".zip")
+download.file(url, temp_zip)
+unzip(temp_zip, exdir = "./data")
+power_data <- read.table("./data/household_power_consumption.txt", header = TRUE, sep = ";", na.strings = "?")
+
+# Convert Date and Time columns to a single datetime column
+power_data$DateTime <- as.POSIXct(paste(power_data$Date, power_data$Time), format = "%d/%m/%Y %H:%M:%S")
+
+# Select relevant columns for analysis
+power_data <- subset(power_data, select = c(DateTime, Global_active_power))
+
+# Handle missing values
+power_data <- na.omit(power_data)
+
+# Check for missing values
+missing_values <- sum(is.na(power_data))
+cat("Total missing values: ", missing_values, "\n")
+
+# Summary statistics
+summary(power_data)
+
+# Plot time series of Global Active Power
+ggplot(power_data, aes(x = DateTime, y = Global_active_power)) +
+  geom_line() +
+  labs(title = "Global Active Power Over Time",
+       x = "Date",
+       y = "Global Active Power (kilowatts)")
+
+# Plot distribution of Global Active Power
+ggplot(power_data, aes(x = Global_active_power)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black") +
+  labs(title = "Distribution of Global Active Power",
+       x = "Global_active_power (kilowatts)",
+       y = "Frequency")
+
+# Correlation between numeric variables
+numeric_vars <- power_data %>% select(-DateTime)
+correlation_matrix <- cor(numeric_vars)
+print(correlation_matrix)
+
+# Visualize the correlation matrix
+ggcorrplot(correlation_matrix, lab = TRUE)
+
+# Extract day, month, and year from DateTime
+power_data <- power_data %>%
+  mutate(Day = day(DateTime),
+         Month = month(DateTime, label = TRUE, abbr = TRUE),
+         Year = year(DateTime),
+         Hour = hour(DateTime))
+
+# Plot Global Active Power by Month
+ggplot(power_data, aes(x = Month, y = Global_active_power)) +
+  stat_summary(fun = mean, geom = "bar", fill = "lightblue") +
+  labs(title = "Average Global Active Power by Month",
+       x = "Month",
+       y = "Average Global Active Power (kilowatts)")
+
+# Plot Global Active Power by Hour
+ggplot(power_data, aes(x = Hour, y = Global_active_power)) +
+  stat_summary(fun = mean, geom = "line", color = "blue") +
+  labs(title = "Average Global Active Power by Hour of the Day",
+       x = "Hour",
+       y = "Average Global Active Power (kilowatts)")
+
+# Boxplot of Global Active Power by Day of the Week
+power_data$Weekday <- wday(power_data$DateTime, label = TRUE)
+ggplot(power_data, aes(x = Weekday, y = Global_active_power)) +
+  geom_boxplot() +
+  labs(title = "Global Active Power by Day of the Week",
+       x = "Day of the Week",
+       y = "Global Active Power (kilowatts)")
+
+# Density plot of Global Active Power
+ggplot(power_data, aes(x = Global_active_power)) +
+  geom_density(fill = "blue", alpha = 0.5) +
+  labs(title = "Density Plot of Global Active Power",
+       x = "Global Active Power (kilowatts)",
+       y = "Density")
+
+# Split data into training and testing sets (80-20 split)
+set.seed(123)
+index <- sample(1:nrow(power_data), 0.8 * nrow(power_data))
+train_data <- power_data[index, ]
+test_data <- power_data[-index, ]
+
+# Train Decision Tree model
+tree_model <- rpart(Global_active_power ~ ., data = train_data)
+
+# Train Neural Network model
+nn_model <- nnet(Global_active_power ~ ., data = train_data, size = 10, maxit = 200)
+
+# Predictions from Decision Tree model
+tree_predictions <- predict(tree_model, newdata = test_data)
+
+# Predictions from Neural Network model
+nn_predictions <- predict(nn_model, newdata = test_data)
+
+# Calculate MAE for Decision Tree
+mae_tree <- mae(test_data$Global_active_power, tree_predictions)
+
+# Calculate MAE for Neural Network
+mae_nn <- mae(test_data$Global_active_power, nn_predictions)
+
+# Calculate RMSE for Decision Tree
+rmse_tree <- rmse(test_data$Global_active_power, tree_predictions)
+
+# Calculate RMSE for Neural Network
+rmse_nn <- rmse(test_data$Global_active_power, nn_predictions)
+
+# Calculate R-squared for Decision Tree
+r2_tree <- R2(tree_predictions, test_data$Global_active_power)
+
+# Calculate R-squared for Neural Network
+r2_nn <- R2(nn_predictions, test_data$Global_active_power)
+
+# Output MAE, RMSE, and R-squared for both models
+cat("Decision Tree Model:\n")
+cat("MAE: ", mae_tree, "\n")
+cat("RMSE: ", rmse_tree, "\n")
+cat("R-squared: ", r2_tree, "\n\n")
+
+cat("Neural Network Model:\n")
+cat("MAE: ", mae_nn, "\n")
+cat("RMSE: ", rmse_nn, "\n")
+cat("R-squared: ", r2_nn, "\n")
